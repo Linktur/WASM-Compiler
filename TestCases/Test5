@@ -1,0 +1,8 @@
+routine main() is
+  var b : boolean
+  var r is 1.2
+  b := r
+  print b
+end
+
+//ошибка типов

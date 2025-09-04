@@ -1,0 +1,8 @@
+routine main() is
+  var i : integer
+  var r is 2.4
+  i := r
+  print i
+end
+
+//2

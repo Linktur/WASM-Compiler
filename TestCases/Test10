@@ -1,0 +1,15 @@
+routine main() is
+  var i is 3
+  while i > 0 loop
+    if i > 1 then
+      print i
+    else
+      print 1
+    end
+    i := i - 1
+  end
+end
+
+//3
+//1
+//1

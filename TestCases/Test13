@@ -1,0 +1,13 @@
+type A2 is array[2] integer
+
+routine main() is
+  var a : A2
+  var b : A2
+  a[1] := 5
+  a[2] := 6
+  b := a
+  a[1] := 9
+  print b[1]
+end
+
+//9 

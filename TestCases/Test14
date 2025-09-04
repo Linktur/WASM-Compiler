@@ -1,0 +1,9 @@
+routine inc(x : integer) : integer
+
+routine main() is
+  print inc(5)
+end
+
+routine inc(x : integer) : integer => x + 1
+
+//6

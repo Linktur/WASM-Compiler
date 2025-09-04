@@ -1,0 +1,8 @@
+routine main() is
+  var r : real
+  r := 5
+  print r
+end
+
+//ожидаемый вывод:
+//5.0

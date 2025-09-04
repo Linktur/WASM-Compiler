@@ -1,0 +1,19 @@
+routine main() is
+  var b is true
+  var i : integer
+  var x : boolean
+  var r : real
+  i := b
+  r := b
+  print i
+  print r
+  x := 1
+  print x
+  x := 0
+  print x
+end
+
+//1
+//1.0
+//true
+//false
