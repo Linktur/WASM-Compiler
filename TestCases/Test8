@@ -1,0 +1,9 @@
+routine main() is
+  for i in 1 .. 3 reverse loop
+    print i
+  end
+end
+
+//3
+//2
+//1

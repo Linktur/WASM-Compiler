@@ -1,0 +1,11 @@
+routine main() is
+  print 42
+  print 3.14
+  print true
+end
+
+//ожидаемый вывод:
+
+//42
+//3.14
+//true

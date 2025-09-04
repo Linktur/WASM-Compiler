@@ -1,0 +1,14 @@
+type Box is record
+  var v : integer
+end
+
+routine main() is
+  var a : Box
+  var b : Box
+  a.v := 1
+  b := a
+  a.v := 42
+  print b.v
+end
+
+//42

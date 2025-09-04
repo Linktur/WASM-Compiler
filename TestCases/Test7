@@ -1,0 +1,9 @@
+routine main() is
+  for i in 1 .. 3 loop
+    print i
+  end
+end
+
+//1
+//2
+//3

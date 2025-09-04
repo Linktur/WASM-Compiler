@@ -1,0 +1,15 @@
+type Point is record
+  var x : integer
+  var y : integer
+end
+
+routine main() is
+  var p : Point
+  p.x := 7
+  p.y := 9
+  print p.x
+  print p.y
+end
+
+//7
+//9

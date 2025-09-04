@@ -1,0 +1,15 @@
+type A3 is array[3] integer
+
+routine main() is
+  var a : A3
+  a[1] := 7
+  a[2] := 8
+  a[3] := 9
+  for v in a loop
+    print v
+  end
+end
+
+//7
+//8
+//9
