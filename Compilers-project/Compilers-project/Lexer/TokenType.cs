@@ -11,7 +11,7 @@ public enum TokenType
     // ключевые слова
     Var, Type, Record, Array, Routine, Is, End,
     If, Then, Else, While, For, Reverse, Loop, Return, Print,
-    And, Or, Xor, Not,
+    And, Or, Xor, Not, In,
 
     // знаки/операторы
     LParen, RParen, LBracket, RBracket, Comma, Colon, Semicolon, Dot,
