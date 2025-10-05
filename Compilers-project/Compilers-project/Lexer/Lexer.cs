@@ -11,7 +11,7 @@ public sealed class Lexer : ILexer
     /// <summary>Таблица ключевых слов: текст → тип токена.</summary>
     private readonly Dictionary<string, TokenType> _kw;
 
-    /// <summary>Буфер lookahead (результаты NextCore для реализации Peek(k)).</summary>
+    /// <summary>Буфер lookahead (результаты NextCore для реализации f(k)).</summary>
     private readonly List<Token> tokenList = new();
 
     /// <summary>
@@ -311,7 +311,7 @@ public sealed class Lexer : ILexer
             '-' => Make(TokenType.Minus, startPos, startLine, startCol),
             '*' => Make(TokenType.Star, startPos, startLine, startCol),
             '%' => Make(TokenType.Percent, startPos, startLine, startCol),
-            '\r' or '\n' => new Token(TokenType.NewLine, new Span(startPos, 1, startLine, startCol), "\\n"),
+            // '\r' и '\n' уже обрабатываются в TryLexNewLine()
             _ => ErrorToken($"Unexpected char '{c}'", startPos, startLine, startCol, 1)
         };
     }
@@ -324,7 +324,7 @@ public sealed class Lexer : ILexer
         ["var"]=TokenType.Var, ["type"]=TokenType.Type, ["record"]=TokenType.Record,
         ["array"]=TokenType.Array, ["routine"]=TokenType.Routine, ["is"]=TokenType.Is,
         ["end"]=TokenType.End, ["if"]=TokenType.If, ["then"]=TokenType.Then, ["else"]=TokenType.Else,
-        ["while"]=TokenType.While, ["for"]=TokenType.For, ["reverse"]=TokenType.Reverse,
+        ["while"]=TokenType.While, ["for"]=TokenType.For, ["in"]=TokenType.In, ["reverse"]=TokenType.Reverse,
         ["loop"]=TokenType.Loop, ["return"]=TokenType.Return, ["print"]=TokenType.Print,
         ["and"]=TokenType.And, ["or"]=TokenType.Or, ["xor"]=TokenType.Xor, ["not"]=TokenType.Not
     };
