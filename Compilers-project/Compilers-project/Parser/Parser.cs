@@ -25,8 +25,6 @@ public sealed class Parser
         _expr = new ExprParser(this);
     }
 
-    // ====== Служебки токенов ======
-
     internal Token Current => _t;
     internal void Next() => _t = _lx.NextToken();
 
@@ -65,8 +63,6 @@ public sealed class Parser
         if (IsSeparator(_t)) SkipOptionalSeparators();
     }
 
-    // ====== Точка входа ======
-
     public ProgramNode ParseProgram()
     {
         var decls = new List<Decl>();
@@ -103,8 +99,7 @@ public sealed class Parser
         return new ProgramNode(programSpan, decls);
     }
 
-    // ====== Декларации ======
-
+    // Декларации
     private Decl ParseSimpleDecl()
     {
         if (Accept(TokenType.Var))  return ParseVarDecl();
@@ -169,7 +164,7 @@ public sealed class Parser
         if (Accept(TokenType.Colon))
             ret = ParseType();
 
-        // Forward declaration (no body)
+        // Forward declaration
         if (_t.Type == TokenType.NewLine || _t.Type == TokenType.Semicolon || _t.Type == TokenType.Eof)
         {
             var span = new Span(start.Start, _t.Span.Start - start.Start, start.Line, start.Col);
@@ -195,8 +190,7 @@ public sealed class Parser
         return new RoutineDecl(rspan, name, pars, ret, new BlockBody(body));
     }
 
-    // ====== Типы ======
-
+    // типы
     private TypeRef ParseType()
     {
         var start = _t.Span;
@@ -243,7 +237,7 @@ public sealed class Parser
         return new NamedTypeRef(_t.Span, "<error>");
     }
 
-    // ====== Блоки и операторы ======
+    // блоки и операторы
 
     private Block ParseBlock()
     {
@@ -380,6 +374,7 @@ public sealed class Parser
 
     private PrintStmt ParsePrint()
     {
+        // TODO: а не надо ли это унифицировать
         var start = _t.Span;
         Expect(TokenType.Print, "expected 'print'");
         var items = new List<Expr> { _expr.ParseExpression() };
@@ -390,6 +385,7 @@ public sealed class Parser
         return new PrintStmt(span, items);
     }
 
+    // Для парсера выражений
     // ====== Первичка и постфиксы (для LValue/имён на уровне операторов) ======
     public Expr ParsePrimaryWithPostfix()
     {
