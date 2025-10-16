@@ -12,28 +12,38 @@ internal class Program
     private static void Main(string[] args)
     {
         bool dumpTokens = false;
+        bool dumpAst = false;
+        bool dumpAstJson = false;
         var inputs = new List<string>();
+        
         foreach (var arg in args)
         {
             if (arg == "--lex")
                 dumpTokens = true;
+            else if (arg == "--ast")
+                dumpAst = true;
+            else if (arg == "--ast-json")
+                dumpAstJson = true;
             else
                 inputs.Add(arg);
         }
 
         if (inputs.Count == 0)
         {
-            var discovered = FindTestDirectory();
-            if (discovered is null)
-            {
-                Console.Error.WriteLine(
-                    "error: no inputs were provided and the TestCases directory could not be located.");
-                return;
-            }
-
-            inputs.Add(discovered);
-            Console.WriteLine($"No inputs specified, using test directory: {discovered}");
-            Console.WriteLine();
+            Console.Error.WriteLine("Usage: Compilers-project [options] <file|directory>");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Options:");
+            Console.Error.WriteLine("  --lex        Dump tokens from lexer");
+            Console.Error.WriteLine("  --ast        Print AST tree");
+            Console.Error.WriteLine("  --ast-json   Export AST as JSON");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Examples:");
+            Console.Error.WriteLine("  Compilers-project TestCases/Test1");
+            Console.Error.WriteLine("  Compilers-project --lex TestCases/Test1");
+            Console.Error.WriteLine("  Compilers-project --ast TestCases/Test1");
+            Console.Error.WriteLine("  Compilers-project --ast-json TestCases/Test1");
+            Console.Error.WriteLine("  Compilers-project TestCases");
+            return;
         }
 
         foreach (var path in inputs)
@@ -43,12 +53,12 @@ internal class Program
                 foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
                 {
                     if (!IsHidden(file))
-                        RunParserOnFile(file, dumpTokens);
+                        RunParserOnFile(file, dumpTokens, dumpAst, dumpAstJson);
                 }
             }
             else if (File.Exists(path))
             {
-                RunParserOnFile(path, dumpTokens);
+                RunParserOnFile(path, dumpTokens, dumpAst, dumpAstJson);
             }
             else
             {
@@ -57,22 +67,7 @@ internal class Program
         }
     }
 
-    private static string? FindTestDirectory()
-    {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null)
-        {
-            var candidate = Path.Combine(current.FullName, "TestCases");
-            if (Directory.Exists(candidate))
-                return candidate;
-
-            current = current.Parent;
-        }
-
-        return null;
-    }
-
-    private static void RunParserOnFile(string filePath, bool dumpTokens)
+    private static void RunParserOnFile(string filePath, bool dumpTokens, bool dumpAst, bool dumpAstJson)
     {
         Console.WriteLine($"=== {filePath} ===");
 
@@ -86,11 +81,27 @@ internal class Program
             }
 
             var parser = new Parser.Parser(new Lexer.Lexer(source));
-            parser.ParseProgram();
+            var program = parser.ParseProgram();
 
             if (!parser.Diag.HasErrors)
             {
                 Console.WriteLine("Parse succeeded with no diagnostics.");
+                
+                if (dumpAst)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("=== AST ===");
+                    var printer = new AstVisualizer.AstPrinter();
+                    Console.WriteLine(printer.Print(program));
+                }
+                
+                if (dumpAstJson)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("=== AST JSON ===");
+                    var exporter = new AstVisualizer.AstJsonExporter();
+                    Console.WriteLine(exporter.Export(program));
+                }
             }
             else
             {
