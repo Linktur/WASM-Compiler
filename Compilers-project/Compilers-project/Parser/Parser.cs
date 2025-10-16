@@ -107,18 +107,16 @@ public sealed class Parser
 
     private Decl ParseSimpleDecl()
     {
-        if (Accept(TokenType.Var))  return ParseVarDecl(afterVar: true);
-        if (Accept(TokenType.Type)) return ParseTypeDecl(afterType: true);
+        if (Accept(TokenType.Var))  return ParseVarDecl();
+        if (Accept(TokenType.Type)) return ParseTypeDecl();
         // сюда не зайдём, защитный код:
         Diag.Error(_t.Span, "expected 'var' or 'type'");
         return new VarDecl(_t.Span, "<error>", null, null);
     }
 
-    private VarDecl ParseVarDecl(bool afterVar = false)
+    private VarDecl ParseVarDecl()
     {
         var start = _t.Span;
-        if (!afterVar) Expect(TokenType.Var, "expected 'var'");
-
         var nameTok = Expect(TokenType.Identifier, "variable name expected");
         TypeRef? type = null;
         Expr? init = null;
@@ -134,10 +132,9 @@ public sealed class Parser
         return new VarDecl(span, nameTok.Text!, type, init);
     }
 
-    private TypeDecl ParseTypeDecl(bool afterType = false)
+    private TypeDecl ParseTypeDecl()
     {
         var start = _t.Span;
-        if (!afterType) Expect(TokenType.Type, "expected 'type'");
         var nameTok = Expect(TokenType.Identifier, "type name expected");
         Expect(TokenType.Is, "expected 'is'");
         var typ = ParseType();
@@ -217,10 +214,9 @@ public sealed class Parser
         {
             var fields = new List<VarDecl>();
             SkipOptionalSeparators();
-            while (_t.Type == TokenType.Var)
+            while (Accept(TokenType.Var))
             {
-                Next(); // consume 'var'
-                fields.Add(ParseVarDecl(afterVar: true));
+                fields.Add(ParseVarDecl());
                 SkipOptionalSeparators();
             }
             var endTok = Expect(TokenType.End, "expected 'end' to close record");
