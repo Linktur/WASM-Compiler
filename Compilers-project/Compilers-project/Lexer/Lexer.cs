@@ -63,7 +63,7 @@ public sealed class Lexer : ILexer
     /// </summary>
     private Token NextCore()
     {
-        SkipSpaces(); // только пробел/таб
+        SkipSpacesAndComments(); // пробел/таб/комментарии
 
         // Перевод строки — значимый токен
         var nl = TryLexNewLine();
@@ -86,14 +86,32 @@ public sealed class Lexer : ILexer
     }
 
     /// <summary>
-    /// Пропускает только пробел и табуляцию. Переводы строк не трогаем.
+    /// Пропускает пробелы, табуляцию и комментарии. Переводы строк не трогаем.
     /// </summary>
-    private void SkipSpaces()
+    private void SkipSpacesAndComments()
     {
         while (!_src.IsEof)
         {
             char c = _src.Peek();
-            if (c == ' ' || c == '\t') { _src.Advance(); continue; }
+            
+            // Пробелы и табы
+            if (c == ' ' || c == '\t') 
+            { 
+                _src.Advance(); 
+                continue; 
+            }
+            
+            // Комментарии //
+            if (c == '/' && _src.PeekAhead() == '/')
+            {
+                // Пропускаем до конца строки
+                _src.Advance(); // первый /
+                _src.Advance(); // второй /
+                while (!_src.IsEof && _src.Peek() != '\n' && _src.Peek() != '\r')
+                    _src.Advance();
+                continue;
+            }
+            
             break;
         }
     }
@@ -205,6 +223,16 @@ public sealed class Lexer : ILexer
                     {
                         _src.Reset(savePos);
                     }
+                }
+
+                // Проверка на ошибку типа 1.3.5 (несколько точек)
+                if (!_src.IsEof && _src.Peek() == '.' && char.IsDigit(_src.PeekAhead()))
+                {
+                    // Съедаем остаток для полного сообщения об ошибке
+                    while (!_src.IsEof && (_src.Peek() == '.' || char.IsDigit(_src.Peek())))
+                        _src.Advance();
+                    var errSpan = _src.MakeSpan(startPos, startLine, startCol);
+                    return ErrorToken("Invalid number literal: multiple decimal points", startPos, startLine, startCol, errSpan.Length);
                 }
 
                 var spanR = _src.MakeSpan(startPos, startLine, startCol);

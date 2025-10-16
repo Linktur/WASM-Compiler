@@ -32,9 +32,9 @@ public sealed class RoutineDecl : Decl
     public string Name { get; }
     public IReadOnlyList<Param> Parameters { get; }
     public TypeRef? ReturnType { get; }
-    public RoutineBody Body { get; }
+    public RoutineBody? Body { get; }  // null для forward declarations
 
-    public RoutineDecl(Span span, string name, IReadOnlyList<Param> parameters, TypeRef? returnType, RoutineBody body)
+    public RoutineDecl(Span span, string name, IReadOnlyList<Param> parameters, TypeRef? returnType, RoutineBody? body)
         : base(span) => (Name, Parameters, ReturnType, Body) = (name, parameters, returnType, body);
 }
 

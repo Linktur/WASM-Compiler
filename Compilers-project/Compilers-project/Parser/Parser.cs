@@ -108,7 +108,7 @@ public sealed class Parser
     private Decl ParseSimpleDecl()
     {
         if (Accept(TokenType.Var))  return ParseVarDecl(afterVar: true);
-        if (Accept(TokenType.Type)) return ParseTypeDecl();
+        if (Accept(TokenType.Type)) return ParseTypeDecl(afterType: true);
         // сюда не зайдём, защитный код:
         Diag.Error(_t.Span, "expected 'var' or 'type'");
         return new VarDecl(_t.Span, "<error>", null, null);
@@ -134,10 +134,10 @@ public sealed class Parser
         return new VarDecl(span, nameTok.Text!, type, init);
     }
 
-    private TypeDecl ParseTypeDecl()
+    private TypeDecl ParseTypeDecl(bool afterType = false)
     {
         var start = _t.Span;
-        Expect(TokenType.Type, "expected 'type'");
+        if (!afterType) Expect(TokenType.Type, "expected 'type'");
         var nameTok = Expect(TokenType.Identifier, "type name expected");
         Expect(TokenType.Is, "expected 'is'");
         var typ = ParseType();
@@ -171,6 +171,13 @@ public sealed class Parser
         TypeRef? ret = null;
         if (Accept(TokenType.Colon))
             ret = ParseType();
+
+        // Forward declaration (no body)
+        if (_t.Type == TokenType.NewLine || _t.Type == TokenType.Semicolon || _t.Type == TokenType.Eof)
+        {
+            var span = new Span(start.Start, _t.Span.Start - start.Start, start.Line, start.Col);
+            return new RoutineDecl(span, name, pars, ret, null);
+        }
 
         // => expr
         if (Accept(TokenType.Arrow))
@@ -212,6 +219,7 @@ public sealed class Parser
             SkipOptionalSeparators();
             while (_t.Type == TokenType.Var)
             {
+                Next(); // consume 'var'
                 fields.Add(ParseVarDecl(afterVar: true));
                 SkipOptionalSeparators();
             }
@@ -296,13 +304,10 @@ public sealed class Parser
             return new AssignStmt(span, expr, rhs);
         }
 
-        // Вызов-процедура как оператор (только простое имя + скобки)
-        if (expr is NameExpr ne && Accept(TokenType.LParen))
+        // Вызов-процедура как оператор (уже распарсен в ParsePrimaryWithPostfix)
+        if (expr is CallExpr ce)
         {
-            var args = ParseArgList();
-            var rpar = Expect(TokenType.RParen, "expected ')'");
-            var span = new Span(start.Start, rpar.Span.End - start.Start, start.Line, start.Col);
-            return new CallStmt(span, ne.Name, args);
+            return new CallStmt(ce.Span, ce.Name, ce.Args);
         }
 
         Diag.Error(start, "expected ':=' or '(' after identifier");
