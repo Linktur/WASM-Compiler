@@ -67,9 +67,26 @@ public sealed class SemanticAnalyzer
                 }
                 
                 var routine = new RoutineSymbol(routineDecl.Name, returnType, parameters);
-                if (!_currentScope.TryDefine(routine))
+                
+                // Проверяем, не объявлена ли уже эта функция
+                var existing = _currentScope.Lookup(routineDecl.Name) as RoutineSymbol;
+                if (existing != null)
                 {
-                    _diagnostics.Error(routineDecl.Span, $"Routine '{routineDecl.Name}' is already defined");
+                    // Если уже есть объявление, проверяем совместимость сигнатур
+                    if (!SignaturesMatch(existing, routine))
+                    {
+                        _diagnostics.Error(routineDecl.Span, 
+                            $"Routine '{routineDecl.Name}' signature does not match forward declaration");
+                    }
+                    // Если это forward declaration, заменяем на полную версию
+                    // (для простоты просто пропускаем повторную регистрацию)
+                }
+                else
+                {
+                    if (!_currentScope.TryDefine(routine))
+                    {
+                        _diagnostics.Error(routineDecl.Span, $"Routine '{routineDecl.Name}' is already defined");
+                    }
                 }
             }
         }
@@ -697,5 +714,25 @@ public sealed class SemanticAnalyzer
     private bool IsLValue(Expr expr)
     {
         return expr is NameExpr or FieldExpr or IndexExpr;
+    }
+    
+    private bool SignaturesMatch(RoutineSymbol a, RoutineSymbol b)
+    {
+        // Проверяем совместимость возвращаемых типов
+        if (!a.ReturnType.Equals(b.ReturnType))
+            return false;
+        
+        // Проверяем количество параметров
+        if (a.Parameters.Count != b.Parameters.Count)
+            return false;
+        
+        // Проверяем типы параметров
+        for (int i = 0; i < a.Parameters.Count; i++)
+        {
+            if (!a.Parameters[i].Type.Equals(b.Parameters[i].Type))
+                return false;
+        }
+        
+        return true;
     }
 }
