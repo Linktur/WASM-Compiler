@@ -12,7 +12,7 @@ namespace Compilers_project.SemanticAnalyzer;
 public sealed class SemanticAnalyzer
 {
     private readonly Diagnostics _diagnostics = new();
-    private SymbolTable _currentScope;
+    private SymbolTable   _currentScope;
     private RoutineSymbol? _currentRoutine; // для проверки return
     
     public Diagnostics Diagnostics => _diagnostics;
