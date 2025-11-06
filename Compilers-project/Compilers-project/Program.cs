@@ -14,6 +14,7 @@ internal class Program
         bool dumpTokens = false;
         bool dumpAst = false;
         bool dumpAstJson = false;
+        bool runSemantic = false;
         var inputs = new List<string>();
         
         foreach (var arg in args)
@@ -24,6 +25,8 @@ internal class Program
                 dumpAst = true;
             else if (arg == "--ast-json")
                 dumpAstJson = true;
+            else if (arg == "--semantic")
+                runSemantic = true;
             else
                 inputs.Add(arg);
         }
@@ -36,6 +39,7 @@ internal class Program
             Console.Error.WriteLine("  --lex        Dump tokens from lexer");
             Console.Error.WriteLine("  --ast        Print AST tree");
             Console.Error.WriteLine("  --ast-json   Export AST as JSON");
+            Console.Error.WriteLine("  --semantic   Run semantic analysis");
             Console.Error.WriteLine();
             Console.Error.WriteLine("Examples:");
             Console.Error.WriteLine("  Compilers-project TestCases/Test1");
@@ -53,12 +57,12 @@ internal class Program
                 foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
                 {
                     if (!IsHidden(file))
-                        RunParserOnFile(file, dumpTokens, dumpAst, dumpAstJson);
+                        RunParserOnFile(file, dumpTokens, dumpAst, dumpAstJson, runSemantic);
                 }
             }
             else if (File.Exists(path))
             {
-                RunParserOnFile(path, dumpTokens, dumpAst, dumpAstJson);
+                RunParserOnFile(path, dumpTokens, dumpAst, dumpAstJson, runSemantic);
             }
             else
             {
@@ -67,7 +71,7 @@ internal class Program
         }
     }
 
-    private static void RunParserOnFile(string filePath, bool dumpTokens, bool dumpAst, bool dumpAstJson)
+    private static void RunParserOnFile(string filePath, bool dumpTokens, bool dumpAst, bool dumpAstJson, bool runSemantic)
     {
         Console.WriteLine($"=== {filePath} ===");
 
@@ -101,6 +105,26 @@ internal class Program
                     Console.WriteLine("=== AST JSON ===");
                     var exporter = new AstVisualizer.AstJsonExporter();
                     Console.WriteLine(exporter.Export(program));
+                }
+                
+                if (runSemantic)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("=== Semantic Analysis ===");
+                    var analyzer = new SemanticAnalyzer.SemanticAnalyzer();
+                    analyzer.Analyze(program);
+                    
+                    if (!analyzer.Diagnostics.HasErrors)
+                    {
+                        Console.WriteLine("Semantic analysis succeeded with no errors.");
+                    }
+                    else
+                    {
+                        foreach (var (span, message) in analyzer.Diagnostics.Items)
+                        {
+                            Console.WriteLine($"[{span.Line}:{span.Col}] {message}");
+                        }
+                    }
                 }
             }
             else
