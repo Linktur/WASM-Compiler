@@ -208,24 +208,23 @@ Program
 
 ### Core Components
 
-1. **Parser** (`Parser.cs`)
+#### **AST Nodes** (`AST/*.cs`)
+   - Immutable node hierarchy
+   - Position tracking via `Span`
+---
+#### **Parser** (`Parser.cs`)
    - Main entry point: `ParseProgram()`
    - Recursive descent parser
    - Error recovery with diagnostics
    - Delegates expression parsing to `ExprParser`
 
-2. **ExprParser** (`ExprParser.cs`)
+---
+#### **ExprParser** (`ExprParser.cs`)
    - Handles operator precedence
    - Pratt parsing for expressions
    - Binary operators: `+`, `-`, `*`, `/`, `%`, `and`, `or`, `xor`
    - Unary operators: `-`, `not`
    - Comparison: `<`, `<=`, `>`, `>=`, `=`, `/=`
-
-3. **AST Nodes** (`AST/*.cs`)
-   - Immutable node hierarchy
-   - Position tracking via `Span`
-   - Type-safe representation
-
 ---
 
 ## AST Node Hierarchy
