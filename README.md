@@ -107,19 +107,58 @@ dotnet run --project Compilers-project/Compilers-project -- --semantic TestCases
 
 ## Генерация кода WebAssembly
 
-Компилятор генерирует WebAssembly Text Format (.wat):
+### Быстрый старт
 
 ```bash
-# Компиляция в WASM
-dotnet run --project Compilers-project/Compilers-project -- --compile TestCases/Test1
+# 1. Перейти в директорию проекта
+cd Compilers-project/Compilers-project
 
-# Указать выходной файл
-dotnet run --project Compilers-project/Compilers-project -- --compile TestCases/Test1 -o output.wat
+# 2. Скомпилировать программу в .wat (текстовый формат)
+dotnet run -- --compile ../../TestCases/Test7
+
+# 3. Сгенерировать .wasm (бинарный формат) - требует wat2wasm в PATH
+dotnet run -- --wasm ../../TestCases/Test7
 ```
 
-### Пример генерируемого кода
+### Варианты компиляции
 
-Исходный код:
+```bash
+# Только .wat файл
+dotnet run -- --compile TestCases/Test1
+
+# .wat + .wasm (автоматически вызывает wat2wasm)
+dotnet run -- --wasm TestCases/Test1
+
+# Указать выходной файл
+dotnet run -- --compile TestCases/Test1 -o output.wat
+```
+
+### Установка WABT (для генерации .wasm)
+
+**Windows (winget):**
+```bash
+winget install wabt
+```
+
+**macOS:**
+```bash
+brew install wabt
+```
+
+**Linux:**
+```bash
+# Скачать с https://github.com/WebAssembly/wabt/releases
+# Или собрать из исходников
+```
+
+**Проверка установки:**
+```bash
+wat2wasm --version
+```
+
+### Пример работы компилятора
+
+**Исходный код** (`Test7`):
 ```
 routine main() is
   for i in 1 .. 3 loop
@@ -128,7 +167,12 @@ routine main() is
 end
 ```
 
-Результат (Test1.wat):
+**Компиляция:**
+```bash
+dotnet run -- --wasm ../../TestCases/Test7
+```
+
+**Результат** (`TestCases/Test7.wat`):
 ```wat
 (module
   (import "env" "print_i32" (func $print_i32 (param i32)))
@@ -159,21 +203,16 @@ end
 
 ### Запуск WASM
 
-#### 1. Конвертация в бинарный формат
+#### Вариант 1: Node.js (рекомендуется)
 
-Установите [WABT](https://github.com/WebAssembly/wabt):
-```bash
-wat2wasm output.wat -o output.wasm
-```
-
-#### 2. Запуск в Node.js
-
-Создайте `run.js`:
+Создайте `run.js` в корне проекта:
 ```javascript
 const fs = require('fs');
 
-const wasmBuffer = fs.readFileSync('output.wasm');
+// Путь к .wasm файлу
+const wasmBuffer = fs.readFileSync('TestCases/Test7.wasm');
 
+// Импорты из хост-окружения
 const imports = {
   env: {
     print_i32: (value) => console.log(value),
@@ -181,6 +220,7 @@ const imports = {
   }
 };
 
+// Загрузка и запуск
 WebAssembly.instantiate(wasmBuffer, imports).then(result => {
   result.instance.exports.main();
 });
@@ -191,27 +231,69 @@ WebAssembly.instantiate(wasmBuffer, imports).then(result => {
 node run.js
 ```
 
-#### 3. Запуск в браузере
+Вывод:
+```
+1
+2
+3
+```
 
+#### Вариант 2: Браузер
+
+Создайте `index.html`:
 ```html
 <!DOCTYPE html>
 <html>
+<head><meta charset="utf-8"></head>
 <body>
-<script>
-const imports = {
-  env: {
-    print_i32: (v) => console.log(v),
-    print_f64: (v) => console.log(v)
-  }
-};
+  <h1>WASM Test</h1>
+  <div id="output"></div>
 
-fetch('output.wasm')
-  .then(r => r.arrayBuffer())
-  .then(bytes => WebAssembly.instantiate(bytes, imports))
-  .then(result => result.instance.exports.main());
-</script>
+  <script>
+  const output = document.getElementById('output');
+
+  const imports = {
+    env: {
+      print_i32: (v) => {
+        output.innerHTML += v + '<br>';
+      },
+      print_f64: (v) => {
+        output.innerHTML += v + '<br>';
+      }
+    }
+  };
+
+  fetch('TestCases/Test7.wasm')
+    .then(r => r.arrayBuffer())
+    .then(bytes => WebAssembly.instantiate(bytes, imports))
+    .then(result => {
+      result.instance.exports.main();
+    })
+    .catch(err => console.error(err));
+  </script>
 </body>
 </html>
+```
+
+Запуск через локальный сервер:
+```bash
+# Python
+python -m http.server 8000
+
+# Node.js
+npx http-server
+
+# Открыть http://localhost:8000
+```
+
+#### Вариант 3: wasmtime (standalone runtime)
+
+```bash
+# Установка
+curl https://wasmtime.dev/install.sh -sSf | bash
+
+# Запуск
+wasmtime TestCases/Test7.wasm
 ```
 
 ### Поддерживаемые конструкции
