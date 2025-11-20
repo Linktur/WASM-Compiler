@@ -104,3 +104,138 @@ dotnet run --project Compilers-project/Compilers-project -- --semantic TestCases
 - `real → boolean` ❌ (запрещено)
 - `boolean → integer` (false → 0, true → 1)
 - `boolean → real` (false → 0.0, true → 1.0)
+
+## Генерация кода WebAssembly
+
+Компилятор генерирует WebAssembly Text Format (.wat):
+
+```bash
+# Компиляция в WASM
+dotnet run --project Compilers-project/Compilers-project -- --compile TestCases/Test1
+
+# Указать выходной файл
+dotnet run --project Compilers-project/Compilers-project -- --compile TestCases/Test1 -o output.wat
+```
+
+### Пример генерируемого кода
+
+Исходный код:
+```
+routine main() is
+  for i in 1 .. 3 loop
+    print i
+  end
+end
+```
+
+Результат (Test1.wat):
+```wat
+(module
+  (import "env" "print_i32" (func $print_i32 (param i32)))
+  (import "env" "print_f64" (func $print_f64 (param f64)))
+
+  (func $main (export "main")
+    (local $i i32)
+    (i32.const 1)
+    (local.set $i)
+    (block $break
+      (loop $continue
+        (local.get $i)
+        (i32.const 3)
+        (i32.gt_s)
+        (br_if $break)
+        (local.get $i)
+        (call $print_i32)
+        (local.get $i)
+        (i32.const 1)
+        (i32.add)
+        (local.set $i)
+        (br $continue)
+      )
+    )
+  )
+)
+```
+
+### Запуск WASM
+
+#### 1. Конвертация в бинарный формат
+
+Установите [WABT](https://github.com/WebAssembly/wabt):
+```bash
+wat2wasm output.wat -o output.wasm
+```
+
+#### 2. Запуск в Node.js
+
+Создайте `run.js`:
+```javascript
+const fs = require('fs');
+
+const wasmBuffer = fs.readFileSync('output.wasm');
+
+const imports = {
+  env: {
+    print_i32: (value) => console.log(value),
+    print_f64: (value) => console.log(value)
+  }
+};
+
+WebAssembly.instantiate(wasmBuffer, imports).then(result => {
+  result.instance.exports.main();
+});
+```
+
+Запуск:
+```bash
+node run.js
+```
+
+#### 3. Запуск в браузере
+
+```html
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+const imports = {
+  env: {
+    print_i32: (v) => console.log(v),
+    print_f64: (v) => console.log(v)
+  }
+};
+
+fetch('output.wasm')
+  .then(r => r.arrayBuffer())
+  .then(bytes => WebAssembly.instantiate(bytes, imports))
+  .then(result => result.instance.exports.main());
+</script>
+</body>
+</html>
+```
+
+### Поддерживаемые конструкции
+
+**Типы данных:**
+- `integer` → i32
+- `real` → f64
+- `boolean` → i32 (0/1)
+
+**Операторы:**
+- Арифметические: `+`, `-`, `*`, `/`, `%`
+- Сравнения: `<`, `<=`, `>`, `>=`, `=`, `/=`
+- Логические: `and`, `or`, `xor`, `not`
+
+**Управляющие конструкции:**
+- `if ... then ... else ... end`
+- `while ... loop ... end`
+- `for i in start .. end loop ... end`
+- `return`
+- `print`
+
+### Ограничения
+
+Упрощённая версия генератора:
+- Нет автоматического преобразования типов
+- Нет поддержки массивов и записей
+- Все операции выполняются над i32 (кроме f64 литералов)
