@@ -32,19 +32,19 @@ public class SimpleWasmGenerator
     }
 
     /// <summary>
-    /// Генерирует WASM модуль из AST программы.
+    /// Генератор WAT из AST
     /// </summary>
     public string Generate()
     {
         Line("(module");
         _indent++;
 
-        // Импорт функций печати из хост-окружения
+        // функции печати из хост-окружения
         Line("(import \"env\" \"print_i32\" (func $print_i32 (param i32)))");
         Line("(import \"env\" \"print_f64\" (func $print_f64 (param f64)))");
         Line("");
 
-        // Генерация всех функций
+        // генерация всех функций
         foreach (var decl in _program.Decls)
         {
             if (decl is RoutineDecl routine && routine.Body != null)
@@ -68,7 +68,6 @@ public class SimpleWasmGenerator
         _locals.Clear();
         _localCount = 0;
 
-        // Сигнатура функции
         var sig = new StringBuilder($"(func ${routine.Name}");
 
         // Параметры
@@ -85,7 +84,6 @@ public class SimpleWasmGenerator
             sig.Append($" (result {TypeRefToWasm(routine.ReturnType)})");
         }
 
-        // Экспорт main
         if (routine.Name == "main")
         {
             sig.Append(" (export \"main\")");
@@ -94,10 +92,10 @@ public class SimpleWasmGenerator
         Line(sig.ToString());
         _indent++;
 
-        // Тело функции
+        // Тело
         if (routine.Body is BlockBody blockBody)
         {
-            // Сбор локальных переменных
+            // локальные переменных
             var localDecls = new List<(string name, string type)>();
             CollectLocals(blockBody.Block, localDecls);
 
@@ -107,7 +105,6 @@ public class SimpleWasmGenerator
                 _locals[name] = _localCount++;
             }
 
-            // Генерация операторов
             GenerateBlock(blockBody.Block);
         }
         else if (routine.Body is ExprBody exprBody)
@@ -180,7 +177,6 @@ public class SimpleWasmGenerator
     {
         switch (stmt)
         {
-            // Присваивание: x := expr
             case AssignStmt assign:
                 GenerateExpr(assign.Value);
                 if (assign.Target is NameExpr name)
@@ -189,7 +185,6 @@ public class SimpleWasmGenerator
                 }
                 break;
 
-            // Условный оператор
             case IfStmt ifStmt:
                 GenerateExpr(ifStmt.Condition);
                 Line("(if");
