@@ -156,9 +156,11 @@ brew install wabt
 wat2wasm --version
 ```
 
-### Пример работы компилятора
+### Примеры
 
-**Исходный код** (`Test7`):
+#### Пример 1: Простой цикл (Test7)
+
+**Исходный код**:
 ```
 routine main() is
   for i in 1 .. 3 loop
@@ -169,10 +171,10 @@ end
 
 **Компиляция:**
 ```bash
-dotnet run -- --wasm ../../TestCases/Test7
+dotnet run -- --wasm TestCases/Test7
 ```
 
-**Результат** (`TestCases/Test7.wat`):
+**Результат** (`Test7.wat`):
 ```wat
 (module
   (import "env" "print_i32" (func $print_i32 (param i32)))
@@ -199,6 +201,94 @@ dotnet run -- --wasm ../../TestCases/Test7
     )
   )
 )
+```
+
+#### Пример 2: Записи (records)
+
+**Исходный код** (`Test11`):
+```
+type Point is record
+  var x : integer
+  var y : integer
+end
+
+routine main() is
+  var p : Point
+  p.x := 7
+  p.y := 9
+  print p.x
+  print p.y
+end
+```
+
+**Компиляция:**
+```bash
+dotnet run -- --wasm TestCases/Test11
+```
+
+**Ключевые элементы WAT:**
+```wat
+(func $main (export "main")
+  (local $p i32)              ; Адрес записи в памяти
+  (i32.const 0)
+  (local.set $p)              ; p указывает на адрес 0
+
+  ; p.x := 7
+  (local.get $p)              ; Адрес базы
+  (i32.const 7)
+  (i32.store)                 ; Сохранить в offset 0
+
+  ; p.y := 9
+  (local.get $p)
+  (i32.const 4)               ; Смещение поля y
+  (i32.add)
+  (i32.const 9)
+  (i32.store)                 ; Сохранить в offset 4
+)
+```
+
+#### Пример 3: Преобразования типов
+
+**Исходный код**:
+```
+routine main() is
+  var x : integer is 10
+  var y : real is 3.14
+  var z : real
+
+  // integer → real
+  z := x
+  print z
+
+  // real → integer
+  var a : integer
+  a := y
+  print a
+
+  // Смешанная арифметика: integer + real → real
+  z := x + y
+  print z
+end
+```
+
+**Ключевые преобразования в WAT:**
+```wat
+; z := x (integer → real)
+(local.get $x)          ; i32
+(f64.convert_i32_s)     ; Преобразование в f64
+(local.set $z)
+
+; a := y (real → integer)
+(local.get $y)          ; f64
+(i32.trunc_f64_s)       ; Усечение до i32
+(local.set $a)
+
+; z := x + y (смешанные типы)
+(local.get $x)          ; i32
+(f64.convert_i32_s)     ; Преобразование x в f64
+(local.get $y)          ; f64
+(f64.add)               ; Сложение f64
+(local.set $z)
 ```
 
 ### Запуск WASM
@@ -302,10 +392,20 @@ wasmtime TestCases/Test7.wasm
 - `integer` → i32
 - `real` → f64
 - `boolean` → i32 (0/1)
+- `array[N] T` → линейная память (адрес i32)
+- `record` → линейная память (адрес i32)
+
+**Автоматическое преобразование типов:**
+- `integer → real` (расширение через f64.convert_i32_s)
+- `real → integer` (сужение через i32.trunc_f64_s)
+- `integer → boolean` (0 → false, не-0 → true)
+- `boolean → integer` (тривиально, оба i32)
+- `boolean → real` (через f64.convert_i32_s)
+- `real → boolean` ❌ (запрещено согласно спецификации)
 
 **Операторы:**
-- Арифметические: `+`, `-`, `*`, `/`, `%`
-- Сравнения: `<`, `<=`, `>`, `>=`, `=`, `/=`
+- Арифметические: `+`, `-`, `*`, `/`, `%` (поддержка как i32, так и f64)
+- Сравнения: `<`, `<=`, `>`, `>=`, `=`, `/=` (поддержка как i32, так и f64)
 - Логические: `and`, `or`, `xor`, `not`
 
 **Управляющие конструкции:**
@@ -315,9 +415,14 @@ wasmtime TestCases/Test7.wasm
 - `return`
 - `print`
 
+**Записи (records):**
+- Объявление: `type T is record var x : integer; var y : real end`
+- Доступ к полям: `r.field`
+- Присваивание полям: `r.field := expr`
+- Записи хранятся в линейной памяти с вычисленными смещениями полей
+
 ### Ограничения
 
-Упрощённая версия генератора:
-- Нет автоматического преобразования типов
-- Нет поддержки массивов и записей
-- Все операции выполняются над i32 (кроме f64 литералов)
+- Массивы поддерживают только примитивные типы (integer, real, boolean)
+- Записи используют семантику ссылок (присваивание копирует адрес, а не значение)
+- Операции смешанных типов (integer + real) автоматически приводятся к real

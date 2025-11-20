@@ -1,0 +1,23 @@
+// Test record support
+
+type Point is record
+  var x : integer
+  var y : integer
+end
+
+routine main() is
+  var p : Point
+  p.x := 10
+  p.y := 20
+  print p.x
+  print p.y
+
+  var sum : integer
+  sum := p.x + p.y
+  print sum
+end
+
+// Expected output:
+// 10
+// 20
+// 30

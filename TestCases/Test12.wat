@@ -1,0 +1,27 @@
+(module
+  (import "env" "print_i32" (func $print_i32 (param i32)))
+  (import "env" "print_f64" (func $print_f64 (param f64)))
+  
+  (memory 1)
+  
+  (func $main (export "main")
+    (local $a i32)
+    (local $b i32)
+    (i32.const 0)
+    (local.set $a)
+    (i32.const 4)
+    (local.set $b)
+    (local.get $a)
+    (i32.const 1)
+    (i32.store)
+    (local.get $a)
+    (local.set $b)
+    (local.get $a)
+    (i32.const 42)
+    (i32.store)
+    (local.get $b)
+    (i32.load)
+    (call $print_i32)
+  )
+  
+)

@@ -1,0 +1,37 @@
+// Test type conversions
+
+routine main() is
+  var x : integer is 10
+  var y : real is 3.14
+  var z : real
+  var a : integer
+  var b : boolean
+
+  // integer → real
+  z := x
+  print z
+
+  // real → integer
+  a := y
+  print a
+
+  // integer + real → real
+  z := x + y
+  print z
+
+  // boolean → integer (implicit, both i32)
+  b := true
+  a := b
+  print a
+
+  // boolean → real
+  y := b
+  print y
+end
+
+// Expected output:
+// 10.0 (or 10)
+// 3
+// 13.14
+// 1
+// 1.0

@@ -2,6 +2,8 @@
   (import "env" "print_i32" (func $print_i32 (param i32)))
   (import "env" "print_f64" (func $print_f64 (param f64)))
   
+  (memory 1)
+  
   (func $main (export "main")
     (local $i i32)
     (i32.const 1)
