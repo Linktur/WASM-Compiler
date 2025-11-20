@@ -17,6 +17,7 @@ internal class Program
         bool dumpAstJson = false;
         bool runSemantic = false;
         bool compile = false;
+        bool generateWasm = false;
         string? outputPath = null;
         var inputs = new List<string>();
 
@@ -33,6 +34,11 @@ internal class Program
                 runSemantic = true;
             else if (arg == "--compile")
                 compile = true;
+            else if (arg == "--wasm")
+            {
+                compile = true;
+                generateWasm = true;
+            }
             else if (arg == "-o" && i + 1 < args.Length)
                 outputPath = args[++i];
             else
@@ -48,7 +54,8 @@ internal class Program
             Console.Error.WriteLine("  --ast        Print AST tree");
             Console.Error.WriteLine("  --ast-json   Export AST as JSON");
             Console.Error.WriteLine("  --semantic   Run semantic analysis");
-            Console.Error.WriteLine("  --compile    Generate WASM output");
+            Console.Error.WriteLine("  --compile    Generate WASM text format (.wat)");
+            Console.Error.WriteLine("  --wasm       Generate WASM binary (.wasm) via wat2wasm");
             Console.Error.WriteLine("  -o <file>    Output file path");
             Console.Error.WriteLine();
             Console.Error.WriteLine("Examples:");
@@ -67,12 +74,12 @@ internal class Program
                 foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
                 {
                     if (!IsHidden(file))
-                        RunParserOnFile(file, dumpTokens, dumpAst, dumpAstJson, runSemantic, compile, outputPath);
+                        RunParserOnFile(file, dumpTokens, dumpAst, dumpAstJson, runSemantic, compile, generateWasm, outputPath);
                 }
             }
             else if (File.Exists(path))
             {
-                RunParserOnFile(path, dumpTokens, dumpAst, dumpAstJson, runSemantic, compile, outputPath);
+                RunParserOnFile(path, dumpTokens, dumpAst, dumpAstJson, runSemantic, compile, generateWasm, outputPath);
             }
             else
             {
@@ -81,7 +88,7 @@ internal class Program
         }
     }
 
-    private static void RunParserOnFile(string filePath, bool dumpTokens, bool dumpAst, bool dumpAstJson, bool runSemantic, bool compile, string? outputPath)
+    private static void RunParserOnFile(string filePath, bool dumpTokens, bool dumpAst, bool dumpAstJson, bool runSemantic, bool compile, bool generateWasm, string? outputPath)
     {
         Console.WriteLine($"=== {filePath} ===");
 
@@ -147,6 +154,44 @@ internal class Program
                     var outFile = outputPath ?? Path.ChangeExtension(filePath, ".wat");
                     File.WriteAllText(outFile, wat);
                     Console.WriteLine($"Generated: {outFile}");
+
+                    // Если нужен бинарный .wasm - вызываем wat2wasm
+                    if (generateWasm)
+                    {
+                        var wasmFile = Path.ChangeExtension(outFile, ".wasm");
+                        try
+                        {
+                            var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = "wat2wasm",
+                                Arguments = $"\"{outFile}\" -o \"{wasmFile}\"",
+                                RedirectStandardOutput = true,
+                                RedirectStandardError = true,
+                                UseShellExecute = false,
+                                CreateNoWindow = true
+                            });
+
+                            if (process != null)
+                            {
+                                process.WaitForExit();
+                                if (process.ExitCode == 0)
+                                {
+                                    Console.WriteLine($"Generated: {wasmFile}");
+                                }
+                                else
+                                {
+                                    var error = process.StandardError.ReadToEnd();
+                                    Console.Error.WriteLine($"wat2wasm failed: {error}");
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"Failed to run wat2wasm: {ex.Message}");
+                            Console.Error.WriteLine("Make sure wat2wasm is installed and in PATH");
+                            Console.Error.WriteLine("Install from: https://github.com/WebAssembly/wabt");
+                        }
+                    }
                 }
             }
             else
