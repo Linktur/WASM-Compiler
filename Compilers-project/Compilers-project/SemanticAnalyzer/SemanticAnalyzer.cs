@@ -127,7 +127,7 @@ public sealed class SemanticAnalyzer
                 var initType = AnalyzeExpression(varDecl.Initializer);
                 if (!initType.IsAssignableTo(varType))
                 {
-                    _diagnostics.Error(varDecl.Span, 
+                    _diagnostics.Error(varDecl.Span,
                         $"Cannot assign '{initType.Name}' to '{varType.Name}'");
                 }
             }
@@ -441,6 +441,27 @@ public sealed class SemanticAnalyzer
             _ => ErrorType.Instance
         };
     }
+
+    /// <summary>
+    /// Анализирует выражение с применением оптимизации сворачивания констант.
+    /// Возвращает тип выражения и применяет оптимизации к AST если возможно.
+    /// </summary>
+    private TypeInfo AnalyzeExpressionWithConstantFolding(ref Expr expr)
+    {
+        var type = AnalyzeExpression(expr);
+
+        // Применяем сворачивание констант, если тип не ошибочный
+        if (type != ErrorType.Instance)
+        {
+            var foldedExpr = ConstantFolding.TryFold(expr);
+            if (foldedExpr != expr)
+            {
+                expr = foldedExpr;
+            }
+        }
+
+        return type;
+    }
     
     private TypeInfo AnalyzeNameExpr(NameExpr name)
     {
@@ -538,17 +559,17 @@ public sealed class SemanticAnalyzer
     private TypeInfo AnalyzeUnaryExpr(UnaryExpr unary)
     {
         var operandType = AnalyzeExpression(unary.Operand);
-        
+
         return unary.Op switch
         {
             "+" or "-" => operandType.IsAssignableTo(PrimitiveType.Integer) || operandType.IsAssignableTo(PrimitiveType.Real)
                 ? operandType
                 : ReportInvalidUnaryOp(unary, operandType),
-            
+
             "not" => operandType.IsAssignableTo(PrimitiveType.Boolean)
                 ? PrimitiveType.Boolean
                 : ReportInvalidUnaryOp(unary, operandType),
-            
+
             _ => ReportInvalidUnaryOp(unary, operandType)
         };
     }
@@ -564,22 +585,22 @@ public sealed class SemanticAnalyzer
     {
         var leftType = AnalyzeExpression(binary.Left);
         var rightType = AnalyzeExpression(binary.Right);
-        
+
         // Арифметические операторы: + - * / %
         if (binary.Op is "+" or "-" or "*" or "/" or "%")
         {
             if (leftType is ErrorType || rightType is ErrorType)
                 return ErrorType.Instance;
-            
+
             // Оба integer -> integer
             if (leftType == PrimitiveType.Integer && rightType == PrimitiveType.Integer)
                 return PrimitiveType.Integer;
-            
+
             // Один или оба real -> real
             if ((leftType == PrimitiveType.Integer || leftType == PrimitiveType.Real) &&
                 (rightType == PrimitiveType.Integer || rightType == PrimitiveType.Real))
                 return PrimitiveType.Real;
-            
+
             _diagnostics.Error(binary.Span,
                 $"Operator '{binary.Op}' cannot be applied to types '{leftType.Name}' and '{rightType.Name}'");
             return ErrorType.Instance;
@@ -693,21 +714,26 @@ public sealed class SemanticAnalyzer
     private TypeInfo ResolveArrayType(ArrayTypeRef array)
     {
         var elementType = ResolveTypeRef(array.Element);
-        
+
         int? size = null;
         if (array.Size != null)
         {
-            // Вычисляем константное выражение для размера
-            if (array.Size is LiteralInt literal)
+            // Вычисляем константное выражение для размера с помощью constant folding
+            var foldedSize = ConstantFolding.TryFold(array.Size);
+            if (foldedSize is LiteralInt literal && literal.Value > 0)
             {
-                size = (int)literal.Value;
+                size = (int)Math.Min(literal.Value, int.MaxValue); // Проверка переполнения
+            }
+            else if (ConstantFolding.IsIntegerConstant(foldedSize))
+            {
+                _diagnostics.Error(array.Span, $"Array size must be a positive integer constant");
             }
             else
             {
                 _diagnostics.Error(array.Span, "Array size must be a constant integer expression");
             }
         }
-        
+
         return new ArrayType(elementType, size);
     }
     

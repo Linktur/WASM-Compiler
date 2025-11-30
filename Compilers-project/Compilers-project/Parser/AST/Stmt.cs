@@ -81,3 +81,11 @@ public sealed class EmptyStmt : Stmt
 {
     public EmptyStmt(Span span) : base(span) { }
 }
+
+// Оператор-блок (используется в оптимизациях)
+public sealed class BlockStmt : Stmt
+{
+    public Block Block { get; }
+
+    public BlockStmt(Span span, Block block) : base(span) => Block = block;
+}
