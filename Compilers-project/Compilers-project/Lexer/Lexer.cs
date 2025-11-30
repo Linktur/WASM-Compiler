@@ -12,7 +12,9 @@ public sealed class Lexer : ILexer
     private readonly Dictionary<string, TokenType> _kw;
 
     /// <summary>Буфер lookahead (результаты NextCore для реализации f(k)).</summary>
-    private readonly List<Token> tokenList = new();
+    private readonly List<Token> _tokenList = new();
+
+    #region Construction
 
     /// <summary>
     /// Создаёт лексер для заданной строки исходника.
@@ -20,18 +22,22 @@ public sealed class Lexer : ILexer
     public Lexer(string source)
     {
         _src = new SourceText(source);
-        _kw  = InitKeywords();
+        _kw = InitKeywords();
     }
+
+    #endregion
+
+    #region Public API
 
     /// <summary>
     /// Возвращает следующий токен, учитывая буфер <see cref="Peek"/>.
     /// </summary>
     public Token NextToken()
     {
-        if (tokenList.Count > 0)
+        if (_tokenList.Count > 0)
         {
-            var t = tokenList[0];
-            tokenList.RemoveAt(0);
+            var t = _tokenList[0];
+            _tokenList.RemoveAt(0);
             return t;
         }
         return NextCore();
@@ -42,9 +48,9 @@ public sealed class Lexer : ILexer
     /// </summary>
     public Token Peek(int k = 1)
     {
-        while (tokenList.Count < k)
-            tokenList.Add(NextCore());
-        return tokenList[k - 1];
+        while (_tokenList.Count < k)
+            _tokenList.Add(NextCore());
+        return _tokenList[k - 1];
     }
 
     /// <summary>
@@ -53,9 +59,13 @@ public sealed class Lexer : ILexer
     /// </summary>
     public void Reset(int position = 0)
     {
-        tokenList.Clear();
+        _tokenList.Clear();
         _src.Reset(position);
     }
+
+    #endregion
+
+    #region Core Lexing
 
     /// <summary>
     /// Основной цикл распознавания одного токена:
@@ -84,6 +94,8 @@ public sealed class Lexer : ILexer
 
         return LexOperatorOrPunct(startPos, startLine, startCol);
     }
+
+    #region Utility Methods
 
     /// <summary>
     /// Пропускает пробелы, табуляцию и комментарии. Переводы строк не трогаем.
@@ -163,15 +175,12 @@ public sealed class Lexer : ILexer
         var span = _src.MakeSpan(startPos, startLine, startCol);
         string text = _src.Text.Substring(span.Start, span.Length);
 
-        // булевы — как литералы
-        if (text == "true")   return new Token(TokenType.BooleanLiteral, span, text, null, null, true);
-        if (text == "false")  return new Token(TokenType.BooleanLiteral, span, text, null, null, false);
-
-        if (_kw.TryGetValue(text, out var kind))
-            return new Token(kind, span, text);
-
-        return new Token(TokenType.Identifier, span, text);
+        return CreateIdentifierOrKeywordToken(text, startPos, startLine, startCol);
     }
+
+    #endregion
+
+    #region Number Parsing
 
     /// <summary>
     /// Пытается распознать число: целое или вещественное (с опциональной экспонентой).
@@ -183,73 +192,118 @@ public sealed class Lexer : ILexer
         char c = _src.Peek();
         if (!char.IsDigit(c)) return null;
 
-        // целая часть
-        _src.Advance();
+        // Читаем целую часть
+        ReadIntegerPart();
+
+        // Проверяем на двусмысленность: 1..3  vs  1.23
+        if (_src.IsEof || _src.Peek() != '.')
+        {
+            return ParseInteger(startPos, startLine, startCol);
+        }
+
+        // Начинается с точки - проверяем что дальше
+        char nextChar = _src.PeekAhead();
+        if (nextChar == '.')
+        {
+            return ParseInteger(startPos, startLine, startCol);
+        }
+
+        if (char.IsDigit(nextChar))
+        {
+            return ParseRealNumber(startPos, startLine, startCol);
+        }
+
+        return ParseInteger(startPos, startLine, startCol);
+    }
+
+    /// <summary>
+    /// Читает целую часть числа (последовательность цифр).
+    /// </summary>
+    private void ReadIntegerPart()
+    {
+        _src.Advance(); // первая цифра уже проверена
         while (!_src.IsEof && char.IsDigit(_src.Peek()))
             _src.Advance();
+    }
 
-        // двусмысленность: 1..3  vs  1.23
-        if (!_src.IsEof && _src.Peek() == '.')
+    /// <summary>
+    /// Парсит целое число.
+    /// </summary>
+    private Token ParseInteger(int startPos, int startLine, int startCol)
+    {
+        var span = _src.MakeSpan(startPos, startLine, startCol);
+        string text = _src.Text.Substring(span.Start, span.Length);
+        return CreateIntegerToken(text, startPos, startLine, startCol);
+    }
+
+    /// <summary>
+    /// Парсит вещественное число с дробной частью и опциональной экспонентой.
+    /// </summary>
+    private Token ParseRealNumber(int startPos, int startLine, int startCol)
+    {
+        _src.Advance(); // пропускаем точку
+        ReadFractionalPart();
+        TryParseExponent();
+
+        // Проверка на ошибку типа 1.3.5 (несколько точек)
+        if (HasMultipleDecimalPoints())
         {
-            char n2 = _src.PeekAhead();
-            if (n2 == '.')
-            {
-                var spanI = _src.MakeSpan(startPos, startLine, startCol);
-                string txtI = _src.Text.Substring(spanI.Start, spanI.Length);
-                if (long.TryParse(txtI, NumberStyles.None, CultureInfo.InvariantCulture, out var iv))
-                    return new Token(TokenType.IntegerLiteral, spanI, txtI, iv);
-                return ErrorToken("Malformed integer literal", startPos, startLine, startCol, spanI.Length);
-            }
-
-            if (char.IsDigit(n2))
-            {
-                _src.Advance(); 
-                while (!_src.IsEof && char.IsDigit(_src.Peek()))
-                    _src.Advance();
-
-                if (!_src.IsEof && (_src.Peek() == 'e' || _src.Peek() == 'E'))
-                {
-                    int savePos = _src.Position;
-                    _src.Advance();
-                    if (!_src.IsEof && (_src.Peek() == '+' || _src.Peek() == '-'))
-                        _src.Advance();
-
-                    if (!_src.IsEof && char.IsDigit(_src.Peek()))
-                    {
-                        while (!_src.IsEof && char.IsDigit(_src.Peek()))
-                            _src.Advance();
-                    }
-                    else
-                    {
-                        _src.Reset(savePos);
-                    }
-                }
-
-                // Проверка на ошибку типа 1.3.5 (несколько точек)
-                if (!_src.IsEof && _src.Peek() == '.' && char.IsDigit(_src.PeekAhead()))
-                {
-                    // Съедаем остаток для полного сообщения об ошибке
-                    while (!_src.IsEof && (_src.Peek() == '.' || char.IsDigit(_src.Peek())))
-                        _src.Advance();
-                    var errSpan = _src.MakeSpan(startPos, startLine, startCol);
-                    return ErrorToken("Invalid number literal: multiple decimal points", startPos, startLine, startCol, errSpan.Length);
-                }
-
-                var spanR = _src.MakeSpan(startPos, startLine, startCol);
-                string txtR = _src.Text.Substring(spanR.Start, spanR.Length);
-                if (double.TryParse(txtR, NumberStyles.Float, CultureInfo.InvariantCulture, out var rv))
-                    return new Token(TokenType.RealLiteral, spanR, txtR, null, rv);
-                return ErrorToken("Malformed real literal", startPos, startLine, startCol, spanR.Length);
-            }
+            var errSpan = _src.MakeSpan(startPos, startLine, startCol);
+            return ErrorToken("Invalid number literal: multiple decimal points", startPos, startLine, startCol, errSpan.Length);
         }
 
         var span = _src.MakeSpan(startPos, startLine, startCol);
-        string txt = _src.Text.Substring(span.Start, span.Length);
-        if (long.TryParse(txt, NumberStyles.None, CultureInfo.InvariantCulture, out var ivalue))
-            return new Token(TokenType.IntegerLiteral, span, txt, ivalue);
-
-        return ErrorToken("Malformed integer literal", startPos, startLine, startCol, span.Length);
+        string text = _src.Text.Substring(span.Start, span.Length);
+        return CreateRealToken(text, startPos, startLine, startCol);
     }
+
+    /// <summary>
+    /// Читает дробную часть вещественного числа.
+    /// </summary>
+    private void ReadFractionalPart()
+    {
+        while (!_src.IsEof && char.IsDigit(_src.Peek()))
+            _src.Advance();
+    }
+
+    /// <summary>
+    /// Пытается распознать научную нотацию (экспоненту).
+    /// </summary>
+    private void TryParseExponent()
+    {
+        if (_src.IsEof || (_src.Peek() != 'e' && _src.Peek() != 'E'))
+            return;
+
+        int savePos = _src.Position;
+        _src.Advance(); // пропускаем 'e' или 'E'
+
+        // Опциональный знак
+        if (!_src.IsEof && (_src.Peek() == '+' || _src.Peek() == '-'))
+            _src.Advance();
+
+        // Должны быть цифры после экспоненты
+        if (!_src.IsEof && char.IsDigit(_src.Peek()))
+        {
+            while (!_src.IsEof && char.IsDigit(_src.Peek()))
+                _src.Advance();
+        }
+        else
+        {
+            _src.Reset(savePos); // откатываемся, если экспонента некорректна
+        }
+    }
+
+    /// <summary>
+    /// Проверяет наличие нескольких десятичных точек в числе.
+    /// </summary>
+    private bool HasMultipleDecimalPoints()
+    {
+        return !_src.IsEof && _src.Peek() == '.' && char.IsDigit(_src.PeekAhead());
+    }
+
+    #endregion
+
+    #region Operator Parsing
 
     /// <summary>
     /// Распознаёт операторы и разделители.
@@ -259,73 +313,121 @@ public sealed class Lexer : ILexer
     {
         char c = _src.Peek();
 
-        // многосимвольные — сначала
-        if (c == ':')
+        // Проверяем многосимвольные операторы
+        var multiCharToken = TryLexMultiCharOperator(c, startPos, startLine, startCol);
+        if (multiCharToken != null)
+            return multiCharToken.Value;
+
+        // Проверяем одиночные символы
+        return LexSingleCharOperator(c, startPos, startLine, startCol);
+    }
+
+    /// <summary>
+    /// Пытается распознать многосимвольный оператор.
+    /// </summary>
+    private Token? TryLexMultiCharOperator(char c, int startPos, int startLine, int startCol)
+    {
+        return c switch
+        {
+            ':' => TryLexAssignOperator(startPos, startLine, startCol),
+            '=' => TryLexArrowOperator(startPos, startLine, startCol),
+            '.' => TryLexDotDotOperator(startPos, startLine, startCol),
+            '<' => TryLexLessOperator(startPos, startLine, startCol),
+            '>' => TryLexGreaterOperator(startPos, startLine, startCol),
+            '/' => TryLexNotEqualOperator(startPos, startLine, startCol),
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Распознает операторы := или :.
+    /// </summary>
+    private Token TryLexAssignOperator(int startPos, int startLine, int startCol)
+    {
+        _src.Advance();
+        if (_src.Peek() == '=')
         {
             _src.Advance();
-            if (_src.Peek() == '=')
-            {
-                _src.Advance();
-                return Make(TokenType.Assign, startPos, startLine, startCol);
-            }
-            return Make(TokenType.Colon, startPos, startLine, startCol);
+            return Make(TokenType.Assign, startPos, startLine, startCol);
         }
+        return Make(TokenType.Colon, startPos, startLine, startCol);
+    }
 
-        if (c == '=')
+    /// <summary>
+    /// Распознает операторы => или =.
+    /// </summary>
+    private Token TryLexArrowOperator(int startPos, int startLine, int startCol)
+    {
+        _src.Advance();
+        if (_src.Peek() == '>')
         {
             _src.Advance();
-            if (_src.Peek() == '>')
-            {
-                _src.Advance();
-                return Make(TokenType.Arrow, startPos, startLine, startCol);
-            }
-            return Make(TokenType.Equal, startPos, startLine, startCol);
+            return Make(TokenType.Arrow, startPos, startLine, startCol);
         }
+        return Make(TokenType.Equal, startPos, startLine, startCol);
+    }
 
-        if (c == '.')
+    /// <summary>
+    /// Распознает операторы .. или ..
+    /// </summary>
+    private Token TryLexDotDotOperator(int startPos, int startLine, int startCol)
+    {
+        _src.Advance();
+        if (_src.Peek() == '.')
         {
             _src.Advance();
-            if (_src.Peek() == '.')
-            {
-                _src.Advance();
-                return Make(TokenType.DotDot, startPos, startLine, startCol);
-            }
-            return Make(TokenType.Dot, startPos, startLine, startCol);
+            return Make(TokenType.DotDot, startPos, startLine, startCol);
         }
+        return Make(TokenType.Dot, startPos, startLine, startCol);
+    }
 
-        if (c == '<')
+    /// <summary>
+    /// Распознает операторы <= или <.
+    /// </summary>
+    private Token TryLexLessOperator(int startPos, int startLine, int startCol)
+    {
+        _src.Advance();
+        if (_src.Peek() == '=')
         {
             _src.Advance();
-            if (_src.Peek() == '=')
-            {
-                _src.Advance();
-                return Make(TokenType.LessEqual, startPos, startLine, startCol);
-            }
-            return Make(TokenType.Less, startPos, startLine, startCol);
+            return Make(TokenType.LessEqual, startPos, startLine, startCol);
         }
+        return Make(TokenType.Less, startPos, startLine, startCol);
+    }
 
-        if (c == '>')
+    /// <summary>
+    /// Распознает операторы >= или >.
+    /// </summary>
+    private Token TryLexGreaterOperator(int startPos, int startLine, int startCol)
+    {
+        _src.Advance();
+        if (_src.Peek() == '=')
         {
             _src.Advance();
-            if (_src.Peek() == '=')
-            {
-                _src.Advance();
-                return Make(TokenType.GreaterEqual, startPos, startLine, startCol);
-            }
-            return Make(TokenType.Greater, startPos, startLine, startCol);
+            return Make(TokenType.GreaterEqual, startPos, startLine, startCol);
         }
+        return Make(TokenType.Greater, startPos, startLine, startCol);
+    }
 
-        if (c == '/')
+    /// <summary>
+    /// Распознает операторы /= или /.
+    /// </summary>
+    private Token TryLexNotEqualOperator(int startPos, int startLine, int startCol)
+    {
+        _src.Advance();
+        if (_src.Peek() == '=')
         {
             _src.Advance();
-            if (_src.Peek() == '=')
-            {
-                _src.Advance();
-                return Make(TokenType.NotEqual, startPos, startLine, startCol);
-            }
-            return Make(TokenType.Slash, startPos, startLine, startCol);
+            return Make(TokenType.NotEqual, startPos, startLine, startCol);
         }
+        return Make(TokenType.Slash, startPos, startLine, startCol);
+    }
 
+    /// <summary>
+    /// Распознает одиночные символы-операторы.
+    /// </summary>
+    private Token LexSingleCharOperator(char c, int startPos, int startLine, int startCol)
+    {
         _src.Advance();
         return c switch
         {
@@ -344,6 +446,10 @@ public sealed class Lexer : ILexer
         };
     }
 
+    #endregion
+
+    #region Keyword Initialization
+
     /// <summary>
     /// Создаёт таблицу ключевых слов (строка -> тип токена).
     /// </summary>
@@ -356,6 +462,10 @@ public sealed class Lexer : ILexer
         ["loop"]=TokenType.Loop, ["return"]=TokenType.Return, ["print"]=TokenType.Print,
         ["and"]=TokenType.And, ["or"]=TokenType.Or, ["xor"]=TokenType.Xor, ["not"]=TokenType.Not
     };
+
+    #endregion
+
+    #region Token Creation Helpers
 
     /// <summary>
     /// Упаковка токена заданного типа с вычислением <see cref="Span"/>.
@@ -377,4 +487,56 @@ public sealed class Lexer : ILexer
     /// </summary>
     private Token ErrorToken(string msg, int startPos, int startLine, int startCol, int len)
         => new(TokenType.Error, new Span(startPos, len, startLine, startCol), msg);
+
+    /// <summary>
+    /// Создаёт токен для целочисленного литерала.
+    /// </summary>
+    private Token CreateIntegerToken(string text, int startPos, int startLine, int startCol)
+    {
+        var span = _src.MakeSpan(startPos, startLine, startCol);
+        if (long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var value))
+            return new Token(TokenType.IntegerLiteral, span, text, value);
+        return ErrorToken("Malformed integer literal", startPos, startLine, startCol, span.Length);
+    }
+
+    /// <summary>
+    /// Создаёт токен для вещественного литерала.
+    /// </summary>
+    private Token CreateRealToken(string text, int startPos, int startLine, int startCol)
+    {
+        var span = _src.MakeSpan(startPos, startLine, startCol);
+        if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+            return new Token(TokenType.RealLiteral, span, text, null, value);
+        return ErrorToken("Malformed real literal", startPos, startLine, startCol, span.Length);
+    }
+
+    /// <summary>
+    /// Создаёт токен для булевого литерала.
+    /// </summary>
+    private Token CreateBooleanToken(string text, int startPos, int startLine, int startCol)
+    {
+        var span = _src.MakeSpan(startPos, startLine, startCol);
+        bool value = text == "true";
+        return new Token(TokenType.BooleanLiteral, span, text, null, null, value);
+    }
+
+    /// <summary>
+    /// Создаёт токен для идентификатора или ключевого слова.
+    /// </summary>
+    private Token CreateIdentifierOrKeywordToken(string text, int startPos, int startLine, int startCol)
+    {
+        var span = _src.MakeSpan(startPos, startLine, startCol);
+
+        if (text == "true" || text == "false")
+            return CreateBooleanToken(text, startPos, startLine, startCol);
+
+        if (_kw.TryGetValue(text, out var tokenType))
+            return new Token(tokenType, span, text);
+
+        return new Token(TokenType.Identifier, span, text);
+    }
+
+    #endregion
+
+    #endregion
 }
