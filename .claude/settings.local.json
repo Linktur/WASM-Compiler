@@ -3,7 +3,9 @@
     "allow": [
       "Bash(dotnet run:*)",
       "Bash(csc:*)",
-      "Bash(./test_lexer.exe)"
+      "Bash(./test_lexer.exe)",
+      "Bash(dotnet test)",
+      "Bash(dotnet test:*)"
     ],
     "deny": [],
     "ask": []

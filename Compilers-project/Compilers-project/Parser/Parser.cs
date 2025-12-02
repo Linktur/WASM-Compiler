@@ -192,6 +192,14 @@ public sealed class Parser
             return new RoutineDecl(span, name, pars, ret, null);
         }
 
+        // Forward declaration ending with newline (no semicolon)
+        if (_t.Type == TokenType.Routine || _t.Type == TokenType.Var || _t.Type == TokenType.Type)
+        {
+            // Следующая декларация - значит это был forward declaration
+            var span = new Span(start.Start, _t.Span.Start - start.Start, start.Line, start.Col);
+            return new RoutineDecl(span, name, pars, ret, null);
+        }
+
         // => expr
         if (Accept(TokenType.Arrow))
         {
