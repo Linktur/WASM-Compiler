@@ -72,6 +72,7 @@ public sealed class Parser
         while (_t.Type != TokenType.Eof)
         {
             var before = _t.Span;
+            Console.WriteLine($"    ParseProgram: current token {_t.Type}");
             try
             {
                 if (_t.Type == TokenType.Var || _t.Type == TokenType.Type)
@@ -90,7 +91,9 @@ public sealed class Parser
             }
             finally
             {
+                Console.WriteLine($"    ParseProgram: before SkipOptionalSeparators, token is {_t.Type}");
                 SkipOptionalSeparators();
+                Console.WriteLine($"    ParseProgram: after SkipOptionalSeparators, token is {_t.Type}");
             }
         }
 
@@ -142,9 +145,13 @@ public sealed class Parser
     private RoutineDecl ParseRoutineDecl()
     {
         var start = _t.Span;
+        Console.WriteLine($"    ParseRoutineDecl: start, token is {_t.Type}");
         Expect(TokenType.Routine, "expected 'routine'");
+        Console.WriteLine($"    ParseRoutineDecl: after Routine, token is {_t.Type}");
         var name = Expect(TokenType.Identifier, "routine name expected").Text!;
+        Console.WriteLine($"    ParseRoutineDecl: after Identifier '{name}', token is {_t.Type}");
         Expect(TokenType.LParen, "expected '('");
+        Console.WriteLine($"    ParseRoutineDecl: after LParen, token is {_t.Type}");
 
         var pars = new List<Param>();
         if (_t.Type != TokenType.RParen)
@@ -158,14 +165,21 @@ public sealed class Parser
                 if (!Accept(TokenType.Comma)) break;
             }
         }
+        Console.WriteLine($"    ParseRoutineDecl: before RParen, token is {_t.Type}");
         Expect(TokenType.RParen, "expected ')'");
+        Console.WriteLine($"    ParseRoutineDecl: after RParen, token is {_t.Type}");
 
         TypeRef? ret = null;
         if (Accept(TokenType.Colon))
+        {
+            Console.WriteLine($"    ParseRoutineDecl: parsing return type, token is {_t.Type}");
             ret = ParseType();
+            Console.WriteLine($"    ParseRoutineDecl: after return type, token is {_t.Type}");
+        }
 
         // Forward declaration
-        if (_t.Type == TokenType.NewLine || _t.Type == TokenType.Semicolon || _t.Type == TokenType.Eof)
+        SkipOptionalSeparators();
+        if (_t.Type == TokenType.Semicolon || _t.Type == TokenType.Eof)
         {
             var span = new Span(start.Start, _t.Span.Start - start.Start, start.Line, start.Col);
             return new RoutineDecl(span, name, pars, ret, null);
@@ -181,9 +195,13 @@ public sealed class Parser
         }
 
         // is Block end
+        Console.WriteLine($"    ParseRoutineDecl: before Expect(Is), token is {_t.Type}");
         Expect(TokenType.Is, "expected 'is'");
+        Console.WriteLine($"    ParseRoutineDecl: before ParseBlock, token is {_t.Type}");
         var body = ParseBlock();
+        Console.WriteLine($"    ParseRoutineDecl: after ParseBlock, token is {_t.Type}");
         Expect(TokenType.End, "expected 'end'");
+        Console.WriteLine($"    ParseRoutineDecl: after Expect(End), token is {_t.Type}");
 
         var endSpan = _t.Span;
         var rspan = new Span(start.Start, endSpan.End - start.Start, start.Line, start.Col);
@@ -247,6 +265,7 @@ public sealed class Parser
 
         while (_t.Type != TokenType.End && _t.Type != TokenType.Eof && _t.Type != TokenType.Else)
         {
+            Console.WriteLine($"    Parsing block item: {_t.Type}");
             if (_t.Type == TokenType.Var || _t.Type == TokenType.Type)
                 items.Add(ParseSimpleDecl());
             else

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet run:*)",
+      "Bash(csc:*)",
+      "Bash(./test_lexer.exe)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

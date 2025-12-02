@@ -33,7 +33,21 @@ end";
         {
             // Parse
             var lexer = new LexerClass(source);
+
+            // Debug: Print all tokens
+            Console.WriteLine("\n🔍 Tokens:");
+            var testLexer = new LexerClass(source);
+            while (true)
+            {
+                var token = testLexer.NextToken();
+                Console.WriteLine($"  {token.Type}: '{token.Text?.Replace("\n", "\\n").Replace("\r", "\\r")}'");
+                if (token.Type == TokenType.Eof) break;
+            }
+
             var parser = new ParserClass(lexer);
+
+            // Debug: Print parsing steps
+            Console.WriteLine("\n🔍 Parsing steps:");
             var program = parser.ParseProgram();
 
             if (parser.Diag.HasErrors)
