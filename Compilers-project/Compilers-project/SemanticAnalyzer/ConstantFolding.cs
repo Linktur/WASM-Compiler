@@ -7,21 +7,18 @@ using Compilers_project.Parser.AST;
 namespace Compilers_project.SemanticAnalyzer;
 
 /// <summary>
-/// Оптимизатор для выполнения сворачивания констант (constant folding).
-/// Вычисляет выражения с константными значениями во время компиляции.
+/// Оптимизатор для выполнения сворачивания констант
 /// </summary>
 public static class ConstantFolding
 {
     /// <summary>
-    /// Пытается свернуть выражение с константами.
+    /// Пытается свернуть выражение с константами
     /// </summary>
-    /// <param name="expr">Исходное выражение</param>
-    /// <returns>Свернутое выражение или исходное, если сворачивание невозможно</returns>
     public static Expr TryFold(Expr expr)
     {
         return expr switch
         {
-            LiteralInt or LiteralReal or LiteralBool => expr, // Уже константа
+            LiteralInt or LiteralReal or LiteralBool => expr, 
             UnaryExpr unary => TryFoldUnary(unary),
             BinaryExpr binary => TryFoldBinary(binary),
             _ => expr

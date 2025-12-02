@@ -30,15 +30,22 @@ public sealed class Parser
 
     internal bool Accept(TokenType k)
     {
+        if (IsAtEof()) return false;
         if (_t.Type == k) { Next(); return true; }
         return false;
     }
 
     internal Token Expect(TokenType k, string message)
     {
+        if (IsAtEof())
+        {
+            Diag.Error(_t.Span, $"unexpected end of file while expecting {message}");
+            return new Token(k, _t.Span, null);
+        }
+
         if (_t.Type == k)
         {
-            var tok = _t; 
+            var tok = _t;
             Next();
             return tok;
         }
@@ -47,20 +54,46 @@ public sealed class Parser
         return new Token(k, _t.Span, null);
     }
 
+    /// <summary>
+    /// Проверяет, достигли ли мы конца файла.
+    /// </summary>
+    private bool IsAtEof() => _t.Type == TokenType.Eof;
+
     private static bool IsSeparator(Token t)
         => t.Type == TokenType.NewLine || t.Type == TokenType.Semicolon;
 
+    /// <summary>
+    /// Пропускает опциональные разделители (newline, semicolon).
+    /// Оптимизирован - не вызывается без необходимости.
+    /// </summary>
     private void SkipOptionalSeparators()
     {
-        while (IsSeparator(_t)) Next();
+        if (IsSeparator(_t))
+        {
+            do Next(); while (IsSeparator(_t));
+        }
     }
 
+    /// <summary>
+    /// Восстанавливается после ошибки парсинга, пропуская токены до одного из sentinel-ов.
+    /// </summary>
     private void RecoverTo(params TokenType[] sentinels)
     {
         var set = new HashSet<TokenType>(sentinels);
-        while (_t.Type != TokenType.Eof && !IsSeparator(_t) && !set.Contains(_t.Type))
+        var recoveryStart = _t.Span;
+
+        // Пропускаем токены, пока не найдем безопасную точку восстановления
+        while (!IsAtEof() && !IsSeparator(_t) && !set.Contains(_t.Type))
             Next();
-        if (IsSeparator(_t)) SkipOptionalSeparators();
+
+        // Пропускаем разделители после восстановления
+        SkipOptionalSeparators();
+
+        // Если восстановление не удалось, добавляем информативное сообщение
+        if (!IsAtEof() && !set.Contains(_t.Type))
+        {
+            Diag.Error(recoveryStart, $"failed to recover to valid syntax position (found {_t.Type})");
+        }
     }
 
     public ProgramNode ParseProgram()
@@ -146,27 +179,23 @@ public sealed class Parser
         var name = Expect(TokenType.Identifier, "routine name expected").Text!;
         Expect(TokenType.LParen, "expected '('");
 
-        var pars = new List<Param>();
-        if (_t.Type != TokenType.RParen)
-        {
-            for (;;)
-            {
-                var pid = Expect(TokenType.Identifier, "parameter name expected").Text!;
-                Expect(TokenType.Colon, "':' expected");
-                var ptype = ParseType();
-                pars.Add(new Param(pid, ptype));
-                if (!Accept(TokenType.Comma)) break;
-            }
-        }
+        var pars = ParseParameterList();
         Expect(TokenType.RParen, "expected ')'");
 
-        TypeRef? ret = null;
-        if (Accept(TokenType.Colon))
-            ret = ParseType();
+        TypeRef? ret = ParseOptionalReturnType();
 
         // Forward declaration
-        if (_t.Type == TokenType.NewLine || _t.Type == TokenType.Semicolon || _t.Type == TokenType.Eof)
+        SkipOptionalSeparators();
+        if (_t.Type == TokenType.Semicolon || _t.Type == TokenType.Eof)
         {
+            var span = new Span(start.Start, _t.Span.Start - start.Start, start.Line, start.Col);
+            return new RoutineDecl(span, name, pars, ret, null);
+        }
+
+        // Forward declaration ending with newline (no semicolon)
+        if (_t.Type == TokenType.Routine || _t.Type == TokenType.Var || _t.Type == TokenType.Type)
+        {
+            // Следующая декларация - значит это был forward declaration
             var span = new Span(start.Start, _t.Span.Start - start.Start, start.Line, start.Col);
             return new RoutineDecl(span, name, pars, ret, null);
         }
@@ -188,6 +217,36 @@ public sealed class Parser
         var endSpan = _t.Span;
         var rspan = new Span(start.Start, endSpan.End - start.Start, start.Line, start.Col);
         return new RoutineDecl(rspan, name, pars, ret, new BlockBody(body));
+    }
+
+    /// <summary>
+    /// Парсит список параметров процедуры.
+    /// </summary>
+    private List<Param> ParseParameterList()
+    {
+        var pars = new List<Param>();
+        if (_t.Type == TokenType.RParen) return pars;
+
+        for (;;)
+        {
+            var pid = Expect(TokenType.Identifier, "parameter name expected").Text!;
+            Expect(TokenType.Colon, "':' expected");
+            var ptype = ParseType();
+            pars.Add(new Param(pid, ptype));
+            if (!Accept(TokenType.Comma)) break;
+        }
+        return pars;
+    }
+
+    /// <summary>
+    /// Парсит опциональный возвращаемый тип.
+    /// </summary>
+    private TypeRef? ParseOptionalReturnType()
+    {
+        TypeRef? ret = null;
+        if (Accept(TokenType.Colon))
+            ret = ParseType();
+        return ret;
     }
 
     // типы
