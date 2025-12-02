@@ -30,15 +30,22 @@ public sealed class Parser
 
     internal bool Accept(TokenType k)
     {
+        if (IsAtEof()) return false;
         if (_t.Type == k) { Next(); return true; }
         return false;
     }
 
     internal Token Expect(TokenType k, string message)
     {
+        if (IsAtEof())
+        {
+            Diag.Error(_t.Span, $"unexpected end of file while expecting {message}");
+            return new Token(k, _t.Span, null);
+        }
+
         if (_t.Type == k)
         {
-            var tok = _t; 
+            var tok = _t;
             Next();
             return tok;
         }
@@ -47,20 +54,46 @@ public sealed class Parser
         return new Token(k, _t.Span, null);
     }
 
+    /// <summary>
+    /// Проверяет, достигли ли мы конца файла.
+    /// </summary>
+    private bool IsAtEof() => _t.Type == TokenType.Eof;
+
     private static bool IsSeparator(Token t)
         => t.Type == TokenType.NewLine || t.Type == TokenType.Semicolon;
 
+    /// <summary>
+    /// Пропускает опциональные разделители (newline, semicolon).
+    /// Оптимизирован - не вызывается без необходимости.
+    /// </summary>
     private void SkipOptionalSeparators()
     {
-        while (IsSeparator(_t)) Next();
+        if (IsSeparator(_t))
+        {
+            do Next(); while (IsSeparator(_t));
+        }
     }
 
+    /// <summary>
+    /// Восстанавливается после ошибки парсинга, пропуская токены до одного из sentinel-ов.
+    /// </summary>
     private void RecoverTo(params TokenType[] sentinels)
     {
         var set = new HashSet<TokenType>(sentinels);
-        while (_t.Type != TokenType.Eof && !IsSeparator(_t) && !set.Contains(_t.Type))
+        var recoveryStart = _t.Span;
+
+        // Пропускаем токены, пока не найдем безопасную точку восстановления
+        while (!IsAtEof() && !IsSeparator(_t) && !set.Contains(_t.Type))
             Next();
-        if (IsSeparator(_t)) SkipOptionalSeparators();
+
+        // Пропускаем разделители после восстановления
+        SkipOptionalSeparators();
+
+        // Если восстановление не удалось, добавляем информативное сообщение
+        if (!IsAtEof() && !set.Contains(_t.Type))
+        {
+            Diag.Error(recoveryStart, $"failed to recover to valid syntax position (found {_t.Type})");
+        }
     }
 
     public ProgramNode ParseProgram()
@@ -72,7 +105,6 @@ public sealed class Parser
         while (_t.Type != TokenType.Eof)
         {
             var before = _t.Span;
-            Console.WriteLine($"    ParseProgram: current token {_t.Type}");
             try
             {
                 if (_t.Type == TokenType.Var || _t.Type == TokenType.Type)
@@ -91,9 +123,7 @@ public sealed class Parser
             }
             finally
             {
-                Console.WriteLine($"    ParseProgram: before SkipOptionalSeparators, token is {_t.Type}");
                 SkipOptionalSeparators();
-                Console.WriteLine($"    ParseProgram: after SkipOptionalSeparators, token is {_t.Type}");
             }
         }
 
@@ -145,37 +175,14 @@ public sealed class Parser
     private RoutineDecl ParseRoutineDecl()
     {
         var start = _t.Span;
-        Console.WriteLine($"    ParseRoutineDecl: start, token is {_t.Type}");
         Expect(TokenType.Routine, "expected 'routine'");
-        Console.WriteLine($"    ParseRoutineDecl: after Routine, token is {_t.Type}");
         var name = Expect(TokenType.Identifier, "routine name expected").Text!;
-        Console.WriteLine($"    ParseRoutineDecl: after Identifier '{name}', token is {_t.Type}");
         Expect(TokenType.LParen, "expected '('");
-        Console.WriteLine($"    ParseRoutineDecl: after LParen, token is {_t.Type}");
 
-        var pars = new List<Param>();
-        if (_t.Type != TokenType.RParen)
-        {
-            for (;;)
-            {
-                var pid = Expect(TokenType.Identifier, "parameter name expected").Text!;
-                Expect(TokenType.Colon, "':' expected");
-                var ptype = ParseType();
-                pars.Add(new Param(pid, ptype));
-                if (!Accept(TokenType.Comma)) break;
-            }
-        }
-        Console.WriteLine($"    ParseRoutineDecl: before RParen, token is {_t.Type}");
+        var pars = ParseParameterList();
         Expect(TokenType.RParen, "expected ')'");
-        Console.WriteLine($"    ParseRoutineDecl: after RParen, token is {_t.Type}");
 
-        TypeRef? ret = null;
-        if (Accept(TokenType.Colon))
-        {
-            Console.WriteLine($"    ParseRoutineDecl: parsing return type, token is {_t.Type}");
-            ret = ParseType();
-            Console.WriteLine($"    ParseRoutineDecl: after return type, token is {_t.Type}");
-        }
+        TypeRef? ret = ParseOptionalReturnType();
 
         // Forward declaration
         SkipOptionalSeparators();
@@ -195,17 +202,43 @@ public sealed class Parser
         }
 
         // is Block end
-        Console.WriteLine($"    ParseRoutineDecl: before Expect(Is), token is {_t.Type}");
         Expect(TokenType.Is, "expected 'is'");
-        Console.WriteLine($"    ParseRoutineDecl: before ParseBlock, token is {_t.Type}");
         var body = ParseBlock();
-        Console.WriteLine($"    ParseRoutineDecl: after ParseBlock, token is {_t.Type}");
         Expect(TokenType.End, "expected 'end'");
-        Console.WriteLine($"    ParseRoutineDecl: after Expect(End), token is {_t.Type}");
 
         var endSpan = _t.Span;
         var rspan = new Span(start.Start, endSpan.End - start.Start, start.Line, start.Col);
         return new RoutineDecl(rspan, name, pars, ret, new BlockBody(body));
+    }
+
+    /// <summary>
+    /// Парсит список параметров процедуры.
+    /// </summary>
+    private List<Param> ParseParameterList()
+    {
+        var pars = new List<Param>();
+        if (_t.Type == TokenType.RParen) return pars;
+
+        for (;;)
+        {
+            var pid = Expect(TokenType.Identifier, "parameter name expected").Text!;
+            Expect(TokenType.Colon, "':' expected");
+            var ptype = ParseType();
+            pars.Add(new Param(pid, ptype));
+            if (!Accept(TokenType.Comma)) break;
+        }
+        return pars;
+    }
+
+    /// <summary>
+    /// Парсит опциональный возвращаемый тип.
+    /// </summary>
+    private TypeRef? ParseOptionalReturnType()
+    {
+        TypeRef? ret = null;
+        if (Accept(TokenType.Colon))
+            ret = ParseType();
+        return ret;
     }
 
     // типы
@@ -265,7 +298,6 @@ public sealed class Parser
 
         while (_t.Type != TokenType.End && _t.Type != TokenType.Eof && _t.Type != TokenType.Else)
         {
-            Console.WriteLine($"    Parsing block item: {_t.Type}");
             if (_t.Type == TokenType.Var || _t.Type == TokenType.Type)
                 items.Add(ParseSimpleDecl());
             else
