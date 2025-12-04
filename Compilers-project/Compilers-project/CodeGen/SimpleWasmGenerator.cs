@@ -24,6 +24,7 @@ public class SimpleWasmGenerator
 
     // Локальные переменные текущей функции
     private readonly Dictionary<string, int> _locals = new();
+    private readonly Dictionary<string, string> _localTypes = new();
     private int _localCount;
 
     public SimpleWasmGenerator(ProgramNode program)
@@ -66,6 +67,7 @@ public class SimpleWasmGenerator
     private void GenerateRoutine(RoutineDecl routine)
     {
         _locals.Clear();
+        _localTypes.Clear();
         _localCount = 0;
 
         var sig = new StringBuilder($"(func ${routine.Name}");
@@ -76,6 +78,7 @@ public class SimpleWasmGenerator
             var wasmType = TypeRefToWasm(p.Type);
             sig.Append($" (param ${p.Name} {wasmType})");
             _locals[p.Name] = _localCount++;
+            _localTypes[p.Name] = wasmType;
         }
 
         // Тип возврата
@@ -103,6 +106,7 @@ public class SimpleWasmGenerator
             {
                 Line($"(local ${name} {type})");
                 _locals[name] = _localCount++;
+                _localTypes[name] = type;
             }
 
             GenerateBlock(blockBody.Block);
@@ -181,6 +185,25 @@ public class SimpleWasmGenerator
                 GenerateExpr(assign.Value);
                 if (assign.Target is NameExpr name)
                 {
+                    // Преобразование типов если необходимо
+                    if (_localTypes.TryGetValue(name.Name, out var targetType))
+                    {
+                        // Получаем тип исходного выражения
+                        string sourceType = GetExpressionType(assign.Value);
+
+                        // Преобразования типов
+                        if (targetType == "f64" && sourceType == "i32")
+                        {
+                            // i32 → f64 (integer в real)
+                            Line("(f64.convert_i32_s)");
+                        }
+                        else if (targetType == "f64" && sourceType == "boolean")
+                        {
+                            // boolean → f64
+                            Line("(f64.convert_i32_s)");
+                        }
+                        // integer и boolean представлены как i32, так что дополнительные преобразования не нужны
+                    }
                     Line($"(local.set ${name.Name})");
                 }
                 break;
@@ -273,15 +296,19 @@ public class SimpleWasmGenerator
                 foreach (var item in print.Items)
                 {
                     GenerateExpr(item);
-                    // f64 для вещественных, i32 для остальных
+                    // Определение типа для печати
+                    string printCall = "call $print_i32";  // по умолчанию
+
                     if (item is LiteralReal)
                     {
-                        Line("(call $print_f64)");
+                        printCall = "call $print_f64";
                     }
-                    else
+                    else if (item is NameExpr nameExpr && _localTypes.TryGetValue(nameExpr.Name, out var varType))
                     {
-                        Line("(call $print_i32)");
+                        printCall = varType == "f64" ? "call $print_f64" : "call $print_i32";
                     }
+
+                    Line($"({printCall})");
                 }
                 break;
 
@@ -386,6 +413,21 @@ public class SimpleWasmGenerator
         "xor" => "i32.xor",
         _ => "i32.add"
     };
+
+    /// <summary>
+    /// Определяет тип выражения для генерации кода
+    /// </summary>
+    private string GetExpressionType(Expr expr)
+    {
+        return expr switch
+        {
+            LiteralInt => "i32",
+            LiteralReal => "f64",
+            LiteralBool => "boolean",
+            NameExpr name => _localTypes.TryGetValue(name.Name, out var type) ? type : "i32",
+            _ => "i32"
+        };
+    }
 
     /// <summary>
     /// Преобразует тип языка в WASM тип.

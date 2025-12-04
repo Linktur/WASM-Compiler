@@ -11,6 +11,11 @@
 *.sln.docstates
 *.env
 
+*.wat
+*.wasm
+Compilers-project/wabt-*
+wat2wasm
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 

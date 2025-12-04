@@ -5,9 +5,10 @@
   (func $main (export "main")
     (local $r f64)
     (i32.const 5)
+    (f64.convert_i32_s)
     (local.set $r)
     (local.get $r)
-    (call $print_i32)
+    (call $print_f64)
   )
   
 )

@@ -47,8 +47,8 @@ public sealed class PrimitiveType : TypeInfo
             
             // real -> real (exact)
             if (this == Real && prim == Real) return true;
-            // real -> integer (narrowing with rounding)
-            if (this == Real && prim == Integer) return true;
+            // real -> integer (NOT ALLOWED - would cause data loss)
+            // if (this == Real && prim == Integer) return false;
             // real -> boolean is ILLEGAL per spec
             
             // boolean -> boolean (exact)
